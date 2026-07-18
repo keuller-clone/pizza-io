@@ -6,10 +6,10 @@ speed upgrades, and stand decorations.
 
 ## Where the game lives
 
-- **The entire game is ONE file:** `PizzaIO.html`, at
-  `/home/esteban/Documents/pizza io/PizzaIO.html`.
+- **The entire game is ONE file:** `pizza-io.html`, at
+  `/home/esteban/Documents/pizza io/pizza-io.html`.
 - Zero dependencies, no build step, no server. Open the file in any modern browser —
-  `xdg-open "PizzaIO.html"` from inside the project folder.
+  `xdg-open "pizza-io.html"` from inside the project folder.
 
 ## Game summary
 
@@ -78,7 +78,7 @@ There's no win/lose state — it's an open-ended tycoon loop, start screen only.
 | Decoration costs | Planters $45 / Tables $65 / Lanterns $85 | `DECOR_COST` |
 | Oven slots | 2 (fixed, not currently purchasable) | `layout.ovenSlots` |
 
-## Code map (all inline in PizzaIO.html)
+## Code map (all inline in pizza-io.html)
 
 | section | key functions |
 |---|---|
