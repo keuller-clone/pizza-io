@@ -4,12 +4,37 @@
 patience, a full visual overhaul (growing garden beds, domed oven, decorated farmstand), helper
 speed upgrades, and stand decorations.
 
+**Visual-overhaul branch (2026-07-21)** — migrated the presentation to a production bitmap-asset
+pipeline: a normalized 6×6 environment atlas, anchored four-direction player walk cycle, supporting
+cast animation sheet, tile-built world rendering, and pixel-styled UI. Gameplay remains on the same
+shared action/state model.
+
 ## Where the game lives
 
-- **The entire game is ONE file:** `pizza-io.html`, at
-  `/home/esteban/Documents/pizza io/pizza-io.html`.
-- Zero dependencies, no build step, no server. Open the file in any modern browser —
+- **The game entry point is** `pizza-io.html` in this repository.
+- Runtime remains dependency-free with no server. Open the file in any modern browser —
   `xdg-open "pizza-io.html"` from inside the project folder.
+- The visual source and normalized runtime atlases live under `assets/`. Run
+  `python3 tools/build_assets.py` only when rebuilding art assets; normal gameplay does not need
+  Python or a build step.
+
+## Pixel-art production workflow
+
+The overhaul follows a recovery-first workflow inspired by the supplied pixel-art production
+video. AI-generated sheets are never loaded directly by the game. They are preserved in
+`assets/source/`, then processed deterministically:
+
+1. Generate a coherent reference or animation sheet on a removable chroma background.
+2. Recover every tile/frame from the inferred grid and validate that none are empty.
+3. Curate usable frames; malformed or drifting frames should be regenerated, not hidden in code.
+4. Pixel-snap with nearest-neighbour sampling and hard alpha edges.
+5. Apply one shared character scale across every pose.
+6. Anchor every character frame to the same foot/ground point.
+7. Quantize one combined sheet to a shared limited palette.
+8. Normalize exact cell dimensions, emit the manifest, and verify inside the browser renderer.
+
+Current runtime contracts are documented in `assets/generated/atlas-manifest.json`. See
+`assets/README.md` for the source/generated boundary.
 
 ## Game summary
 
@@ -88,7 +113,8 @@ There's no win/lose state — it's an open-ended tycoon loop, start screen only.
 | shared actions | `harvestPatch()`, `harvestCheese()`, `canAssemble()`, `loadOven()`, `collectOven()`, `depositPizza()`, `serveFrontCustomer()` — used identically by the player's E-interact **and** the helper AIs, so there's exactly one code path per action regardless of who triggers it |
 | interact | `nearestInteract()` — proximity-sorted list of available actions near the player, drives both the E-key dispatch and the on-screen prompt text |
 | update | `update()` → `updatePlayer()`, `updateOven()`, `updateCustomers()` (spawn/walk/patience/leave), `updateHelperNPCs()` → `updateHarvesterNPC()`/`updateBakerNPC()`/`updateCounterNPC()` (small per-role state machines, each applying `helperSpeedMult(role)`) |
-| draw | `draw()` → `drawBackground()` (grass/dirt zones, fence, trees) → `drawTilledPlot()` + `drawPatch()`×3 (growing crops) → `drawCheesePlant()` → `drawOven()` (domed, chimney/smoke, 2 cook slots) → `drawTables()` → `drawCounter()` (roofed stand + planters/lanterns) → queue/leavers → player + all 3 helper NPCs (`drawFigure()` shared body, per-role palette) → particles/floaters → `drawInteractPrompt()` → `drawHUD()` → `drawHireMenu()` + `drawDecorMenu()` (both populate `buttons[]` for click hit-testing) |
+| assets | `artReady` decodes all runtime atlases before play; `drawEnvTile()` addresses the exact 128px environment cells; `tools/build_assets.py` owns recovery, snapping, anchoring, palette normalization, and manifest output |
+| draw | `draw()` → `drawBackground()` (layered tile field/path/plaza) → garden state → atlas oven/stand/decor → sprite-sheet customers/helpers/player → particles/floaters → pixel HUD and menus |
 | loop | `frame()` rAF, dt clamped to 0.05s |
 
 ## Design notes

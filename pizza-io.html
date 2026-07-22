@@ -6,35 +6,41 @@
 <title>pizza io</title>
 <style>
   html, body {
-    margin: 0; padding: 0; overflow: hidden; background: #2b1a12; height: 100%;
+    margin: 0; padding: 0; overflow: hidden; background: #172317; height: 100%;
     user-select: none; -webkit-user-select: none;
   }
   canvas {
     display: block; cursor: pointer; touch-action: none;
     user-select: none; -webkit-user-select: none; -webkit-user-drag: none;
+    image-rendering: pixelated;
   }
   #ui {
     position: fixed; inset: 0; pointer-events: none;
-    font-family: Georgia, 'Times New Roman', serif; color: #f4e6c1;
+    font-family: 'Courier New', monospace; color: #fff0c2;
   }
   .screen {
     position: absolute; inset: 0; display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center;
-    background: rgba(30, 16, 8, 0.85); pointer-events: auto;
+    background:
+      linear-gradient(rgba(15,30,19,.48), rgba(27,18,12,.78)),
+      url('assets/generated/environment-atlas.png') center / 768px 768px repeat;
+    pointer-events: auto;
   }
-  .screen h1 { font-size: 50px; margin: 0 0 8px; color: #ffd97a; text-shadow: 0 3px 12px rgba(0,0,0,.6); letter-spacing: 1px; }
-  .screen h2 { font-size: 18px; font-weight: normal; margin: 0 0 22px; color: #f0c98a; font-style: italic; }
+  .screen h1 { font-size: clamp(38px, 6vw, 68px); margin: 0 0 8px; color: #ffe29a; text-shadow: 4px 4px 0 #5b2e21, 0 8px 24px #000; letter-spacing: -3px; }
+  .screen h2 { font-size: 17px; font-weight: bold; margin: 0 0 22px; color: #fff0c2; text-shadow: 2px 2px #4f2f1c; }
   .screen .box {
-    background: rgba(60, 30, 14, 0.85); border: 2px solid #c8a24a; border-radius: 12px;
-    padding: 20px 32px; max-width: 620px; line-height: 1.65; font-size: 15.5px; text-align: left;
+    background: #5b3624; border: 5px solid #f0c56b; border-radius: 3px;
+    box-shadow: inset 0 0 0 3px #8a5732, 8px 8px 0 rgba(28,16,10,.55);
+    padding: 20px 28px; max-width: 650px; line-height: 1.55; font-size: 14px; text-align: left;
   }
   .screen .box b { color: #ffd97a; }
   .screen button {
-    margin-top: 24px; font-family: inherit; font-size: 22px; letter-spacing: 1px;
-    padding: 12px 44px; border-radius: 8px; border: 2px solid #ffd97a; cursor: pointer;
-    background: linear-gradient(#d8552a, #9c3512); color: #fff3d6;
+    margin-top: 24px; font-family: inherit; font-weight: bold; font-size: 20px; letter-spacing: 1px;
+    padding: 13px 42px; border-radius: 2px; border: 4px solid #ffe29a; cursor: pointer;
+    background: #a9472d; color: #fff3d6; box-shadow: 5px 5px 0 #4d241b;
   }
-  .screen button:hover { background: linear-gradient(#f06a38, #b3441a); }
+  .screen button:hover { background: #c75a32; transform: translate(-1px,-1px); }
+  .screen button:disabled { filter: grayscale(1); cursor: wait; }
   .hidden { display: none !important; }
   kbd {
     background:#4a2d14; border:1px solid #7a5230; border-radius:4px; padding:1px 7px;
@@ -63,7 +69,7 @@
       perk on top of looking cute<br>
       Customers are patient, but not infinitely so &mdash; don't leave them hanging too long
     </div>
-    <button id="startBtn">Open Up Shop</button>
+    <button id="startBtn" disabled>Preparing the farm...</button>
   </div>
 </div>
 <script>
@@ -75,6 +81,34 @@ ctx.imageSmoothingEnabled = false;
 let W = 0, H = 0;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; computeLayout(); }
 addEventListener('resize', resize);
+
+const art = {
+  environment: new Image(),
+  player: new Image(),
+  cast: new Image(),
+  ready: false,
+};
+function waitForImage(image, src) {
+  return new Promise((resolve, reject) => {
+    image.addEventListener('load', resolve, { once: true });
+    image.addEventListener('error', () => reject(new Error('Unable to load ' + src)), { once: true });
+    image.src = src;
+    if (image.complete && image.naturalWidth) resolve();
+  });
+}
+const artReady = Promise.all([
+  waitForImage(art.environment, 'assets/generated/environment-atlas.png'),
+  waitForImage(art.player, 'assets/generated/player-walk.png'),
+  waitForImage(art.cast, 'assets/generated/supporting-cast.png'),
+]).then(() => { art.ready = true; });
+
+const ENV_CELL = 128;
+function drawEnvTile(column, row, x, y, w, h) {
+  if (!art.ready) return false;
+  ctx.drawImage(art.environment, column * ENV_CELL, row * ENV_CELL, ENV_CELL, ENV_CELL,
+                Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  return true;
+}
 
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -172,7 +206,7 @@ function newGame() {
   standStock = 0;
   queue = []; leavers = [];
   ovenSlots = layout.ovenSlots.map(() => ({ cooking: false, ready: false, t: 0, dur: 9 }));
-  player = { x: W * 0.5, y: H * 0.42, facing: 1, moving: false, walkT: 0, carry: 0 };
+  player = { x: W * 0.5, y: H * 0.42, facing: 1, direction: 'south', moving: false, walkT: 0, carry: 0 };
   npcs = {};
   particles = []; floaters = [];
   spawnTimer = 4;
@@ -382,7 +416,8 @@ function updatePlayer(dt) {
     const l = Math.hypot(dx, dy), spd = 175;
     p.x += (dx / l) * spd * dt; p.y += (dy / l) * spd * dt;
     p.walkT += dt;
-    if (dx !== 0) p.facing = dx > 0 ? 1 : -1;
+    if (dx !== 0) { p.facing = dx > 0 ? 1 : -1; p.direction = dx > 0 ? 'east' : 'west'; }
+    else if (dy !== 0) p.direction = dy > 0 ? 'south' : 'north';
     if (Math.random() < 0.05) sfx.step();
   }
   p.x = clamp(p.x, 30, W - 30); p.y = clamp(p.y, 100, H - 30);
@@ -562,19 +597,29 @@ function drawRadialProgress(x, y, r, frac, color) {
 
 // ------------------------------ BACKGROUND ------------------------------
 function drawBackground() {
-  const splitY = H * 0.53;
-  ctx.fillStyle = '#7ab34f'; ctx.fillRect(0, 0, W, splitY);
-  ctx.fillStyle = 'rgba(94,150,62,0.55)';
-  for (let y = 8; y < splitY; y += 22) for (let x = ((y / 22) % 2 ? 11 : 0); x < W; x += 22) ctx.fillRect(x, y, 3, 3);
-  ctx.fillStyle = 'rgba(150,196,100,0.35)';
-  for (let y = 15; y < splitY; y += 26) for (let x = ((y / 26) % 2 ? 9 : 0); x < W; x += 26) ctx.fillRect(x + 4, y + 4, 2, 2);
+  const tile = 96;
+  const columns = Math.ceil(W / tile), rows = Math.ceil(H / tile);
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      const variant = (column * 7 + row * 13) % 11;
+      drawEnvTile(variant === 0 ? 2 : variant < 4 ? 1 : 0, 0,
+                  column * tile, row * tile, tile + 1, tile + 1);
+    }
+  }
 
-  ctx.fillStyle = '#dcb877'; ctx.fillRect(0, splitY, W, H - splitY);
-  ctx.fillStyle = 'rgba(178,138,80,0.3)';
-  for (let y = splitY + 8; y < H; y += 22) for (let x = ((y / 22) % 2 ? 11 : 0); x < W; x += 22) { ctx.beginPath(); ctx.arc(x, y, 1.6, 0, TAU); ctx.fill(); }
+  // A tile-built service path links the garden, oven, and roadside stand.
+  const pathSize = 104;
+  const pathX = Math.round(W * 0.53 - pathSize / 2);
+  for (let y = Math.round(H * 0.12); y < H; y += pathSize)
+    drawEnvTile(0, 1, pathX, y, pathSize, pathSize);
+  const plazaY = Math.round(H * 0.52);
+  for (let x = Math.max(250, Math.round(W * 0.22)); x < W - 250; x += pathSize)
+    drawEnvTile(2, 1, x, plazaY, pathSize, pathSize);
 
-  drawFenceLine(0);
-  drawFenceLine(H - 16);
+  // Soft vignette focuses the playfield without blurring the pixel art.
+  const shade = ctx.createRadialGradient(W * .5, H * .45, H * .2, W * .5, H * .5, Math.max(W, H) * .72);
+  shade.addColorStop(.55, 'rgba(16,31,18,0)'); shade.addColorStop(1, 'rgba(10,18,11,.28)');
+  ctx.fillStyle = shade; ctx.fillRect(0, 0, W, H);
   drawTrees();
 }
 function drawFenceLine(y) {
@@ -596,17 +641,20 @@ function drawTree(x, y, s = 1) {
   ctx.restore();
 }
 function drawTrees() {
-  for (const t of layout.trees) drawTree(t.x, t.y, 1.1);
+  for (let i = 0; i < layout.trees.length; i++) {
+    const t = layout.trees[i];
+    drawEnvTile(i % 2, 2, t.x - 72, t.y - 76, 144, 144);
+  }
 }
 
 // ------------------------------ GARDEN ------------------------------
 function drawTilledPlot() {
   const x0 = layout.wheatPatch.x - 55, x1 = layout.cheesePlant.x + 55;
   const y0 = layout.wheatPatch.y - 50, y1 = layout.wheatPatch.y + 55;
-  ctx.fillStyle = '#a97c50'; roundRect(x0, y0, x1 - x0, y1 - y0, 16); ctx.fill();
-  ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 3; ctx.stroke();
-  ctx.strokeStyle = 'rgba(122,82,48,0.55)'; ctx.lineWidth = 2;
-  for (let y = y0 + 12; y < y1 - 6; y += 13) { ctx.beginPath(); ctx.moveTo(x0 + 10, y); ctx.lineTo(x1 - 10, y); ctx.stroke(); }
+  ctx.save(); roundRect(x0, y0, x1 - x0, y1 - y0, 12); ctx.clip();
+  for (let x = x0; x < x1; x += 112) drawEnvTile(3, 0, x, y0, 113, y1 - y0);
+  ctx.restore();
+  ctx.strokeStyle = '#5b3624'; ctx.lineWidth = 4; roundRect(x0, y0, x1 - x0, y1 - y0, 12); ctx.stroke();
 }
 function drawPatch(type) {
   const patch = patches[type];
@@ -616,7 +664,7 @@ function drawPatch(type) {
     const scale = pl.ready ? 1 : 0.25 + 0.6 * (1 - clamp(pl.t / PATCH_GROW, 0, 1));
     drawCrop(type, x, y, scale);
   }
-  ctx.textAlign = 'center'; ctx.font = 'italic 11px Georgia'; ctx.fillStyle = '#3d2812';
+  ctx.textAlign = 'center'; ctx.font = 'bold 10px "Courier New"'; ctx.fillStyle = '#4a2b1c';
   ctx.fillText(type === 'herb' ? 'herbs' : type, p.x, p.y + 38);
 }
 function drawCrop(type, x, y, scale) {
@@ -658,59 +706,24 @@ function drawCropIcon(type) {
 }
 function drawCheesePlant() {
   const p = cheesePlant.pos;
-  ctx.fillStyle = '#a97c50'; ctx.beginPath(); ctx.ellipse(p.x, p.y + 6, 32, 17, 0, 0, TAU); ctx.fill();
-  ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.strokeStyle = '#3a6a2e'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(p.x, p.y + 12); ctx.quadraticCurveTo(p.x - 9, p.y - 4, p.x, p.y - 20); ctx.stroke();
-  ctx.fillStyle = '#4c8c40';
-  for (const s of [-1, 1]) {
-    ctx.beginPath(); ctx.ellipse(p.x + s * 11, p.y - 2, 13, 7, s * 0.4, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#2e5a24'; ctx.lineWidth = 1.5; ctx.stroke();
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.ellipse(p.x - 5, p.y - 6, 6, 3, 0, 0, TAU); ctx.fill();
+  drawEnvTile(0, 3, p.x - 52, p.y - 60, 104, 104);
   if (cheesePlant.ripe) {
     const pulse = 0.5 + 0.5 * Math.sin(tSec * 4);
     ctx.fillStyle = `rgba(245,215,110,${0.22 + 0.16 * pulse})`;
-    ctx.beginPath(); ctx.arc(p.x, p.y - 22, 21, 0, TAU); ctx.fill();
-    drawCrop('cheese', p.x, p.y - 22, 1.7);
+    ctx.beginPath(); ctx.arc(p.x, p.y - 15, 28, 0, TAU); ctx.fill();
   } else {
     const frac = 1 - clamp(cheesePlant.regrowT / cheesePlant.regrowMax, 0, 1);
-    ctx.fillStyle = '#d8c98a'; ctx.beginPath(); ctx.arc(p.x, p.y - 22, 6 + frac * 6, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#b3922a'; ctx.lineWidth = 1.5; ctx.stroke();
-    drawRadialProgress(p.x, p.y - 22, 16, frac, '#a8d878');
+    ctx.fillStyle = 'rgba(32,25,18,.48)'; ctx.beginPath(); ctx.arc(p.x, p.y - 12, 27, 0, TAU); ctx.fill();
+    drawRadialProgress(p.x, p.y - 12, 29, frac, '#ffe29a');
   }
-  ctx.textAlign = 'center'; ctx.font = 'italic 11px Georgia'; ctx.fillStyle = '#3d2812';
-  ctx.fillText('cheese plant', p.x, p.y + 34);
+  ctx.textAlign = 'center'; ctx.font = 'bold 11px "Courier New"'; ctx.fillStyle = '#fff0c2';
+  ctx.fillText('CHEESE VINE', p.x, p.y + 49);
 }
 
 // ------------------------------ OVEN ------------------------------
 function drawOven() {
-  const b = layout.ovenBase, cx = b.x, cy = b.y + 30, R = 58;
-  ctx.fillStyle = '#9c9484'; outlineRect(cx - 70, cy + 6, 140, 18, '#9c9484', 5);
-  const domeGrad = ctx.createRadialGradient(cx - 18, cy - 28, 8, cx, cy, R);
-  domeGrad.addColorStop(0, '#d88a5a'); domeGrad.addColorStop(1, '#a85838');
-  ctx.fillStyle = domeGrad;
-  ctx.beginPath(); ctx.arc(cx, cy, R, Math.PI, TAU, false); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#5a2a1e'; ctx.lineWidth = 3; ctx.stroke();
-  ctx.strokeStyle = 'rgba(90,42,30,0.35)'; ctx.lineWidth = 1.4;
-  for (let a = Math.PI + 0.25; a < TAU; a += 0.32) {
-    ctx.beginPath();
-    ctx.moveTo(cx + Math.cos(a) * R * 0.55, cy + Math.sin(a) * R * 0.55);
-    ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); ctx.stroke();
-  }
-  ctx.fillStyle = '#8a8272'; ctx.fillRect(cx + 34, cy - R - 4, 12, 24);
-  ctx.strokeStyle = '#5a5648'; ctx.lineWidth = 1.5; ctx.strokeRect(cx + 34, cy - R - 4, 12, 24);
-  for (let i = 0; i < 3; i++) {
-    const t = (tSec * 0.3 + i * 0.33) % 1;
-    ctx.fillStyle = `rgba(230,230,230,${0.35 * (1 - t)})`;
-    ctx.beginPath(); ctx.arc(cx + 40 + Math.sin(tSec + i) * 4, cy - R - 8 - t * 30, 5 + t * 6, 0, TAU); ctx.fill();
-  }
-  ctx.fillStyle = '#2a1108';
-  ctx.beginPath();
-  ctx.moveTo(cx - 34, cy + 18); ctx.lineTo(cx - 34, cy - 6);
-  ctx.arc(cx, cy - 6, 34, Math.PI, TAU);
-  ctx.lineTo(cx + 34, cy + 18); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#150a05'; ctx.lineWidth = 2; ctx.stroke();
+  const b = layout.ovenBase, cx = b.x, cy = b.y + 10;
+  drawEnvTile(1, 3, cx - 84, cy - 76, 168, 168);
   for (let i = 0; i < 2; i++) {
     const s = layout.ovenSlots[i], slot = ovenSlots[i];
     if (slot.cooking) {
@@ -727,8 +740,8 @@ function drawOven() {
       ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, TAU); ctx.fill();
     }
   }
-  ctx.textAlign = 'center'; ctx.font = 'italic 11px Georgia'; ctx.fillStyle = '#3d2812';
-  ctx.fillText('wood oven', cx, cy + 44);
+  ctx.textAlign = 'center'; ctx.font = 'bold 11px "Courier New"'; ctx.fillStyle = '#fff0c2';
+  ctx.fillText('EMBER OVEN', cx, cy + 84);
 }
 function drawPizzaIcon(x, y, s = 1) {
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
@@ -751,22 +764,10 @@ function drawPizzaIcon(x, y, s = 1) {
 // ------------------------------ STAND ------------------------------
 function drawCounter() {
   const c = layout.counter;
-  ctx.fillStyle = '#a85838';
-  ctx.beginPath(); ctx.moveTo(c.x - 88, c.y - 40); ctx.lineTo(c.x, c.y - 68); ctx.lineTo(c.x + 88, c.y - 40); ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = '#5a2a1e'; ctx.lineWidth = 2.5; ctx.stroke();
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.beginPath(); ctx.moveTo(c.x - 88, c.y - 40); ctx.lineTo(c.x, c.y - 68); ctx.lineTo(c.x - 30, c.y - 50); ctx.closePath(); ctx.fill();
-  for (let i = -3; i <= 3; i++) {
-    ctx.fillStyle = i % 2 === 0 ? '#f4e6c1' : '#d8342c';
-    ctx.fillRect(c.x + i * 22 - 10, c.y - 40, 20, 15);
-  }
-  outlineRect(c.x - 74, c.y - 6, 148, 36, '#8a5a2b', 4);
-  ctx.fillStyle = 'rgba(255,255,255,0.1)'; ctx.fillRect(c.x - 74, c.y - 6, 148, 6);
-  ctx.textAlign = 'center'; ctx.font = 'bold 13px Georgia'; ctx.fillStyle = '#fff3d6';
-  ctx.fillText('PIZZA', c.x, c.y - 46);
-  for (let i = 0; i < standStock; i++) drawPizzaIcon(c.x - 58 + (i % 3) * 22, c.y - 16 - Math.floor(i / 3) * 20, 0.7);
-  ctx.font = 'bold 11px Georgia'; ctx.fillStyle = '#3d2812';
-  ctx.fillText(standStock + '/' + MAX_STAND, c.x, c.y + 42);
+  drawEnvTile(2, 3, c.x - 116, c.y - 105, 232, 186);
+  for (let i = 0; i < standStock; i++) drawPizzaIcon(c.x - 42 + (i % 4) * 28, c.y - 8 - Math.floor(i / 4) * 24, 0.72);
+  ctx.textAlign = 'center'; ctx.font = 'bold 12px "Courier New"'; ctx.fillStyle = '#fff0c2';
+  ctx.fillText('PIZZA  ' + standStock + '/' + MAX_STAND, c.x, c.y + 78);
   if (decorations.planters) { drawPlanter(c.x - 100, c.y + 16); drawPlanter(c.x + 100, c.y + 16); }
   if (decorations.lanterns) drawLanternString(c);
 }
@@ -795,16 +796,7 @@ function drawLanternString(c) {
 function drawTables() {
   if (!decorations.tables) return;
   for (const t of layout.tables) {
-    ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.ellipse(t.x, t.y + 16, 20, 7, 0, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(t.x, t.y - 2); ctx.lineTo(t.x, t.y + 12); ctx.stroke();
-    ctx.fillStyle = '#c9a05a'; ctx.beginPath(); ctx.arc(t.x, t.y - 4, 15, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#d8342c';
-    ctx.beginPath(); ctx.moveTo(t.x - 20, t.y - 8); ctx.lineTo(t.x, t.y - 30); ctx.lineTo(t.x + 20, t.y - 8); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#7a0d0d'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(t.x, t.y - 8); ctx.lineTo(t.x, t.y - 4); ctx.stroke();
+    drawEnvTile(3, 3, t.x - 52, t.y - 52, 104, 104);
   }
 }
 
@@ -840,44 +832,51 @@ function drawFigure(x, y, walkT, moving, facing, palette) {
   ctx.restore();
 }
 function drawPlayer() {
-  drawFigure(player.x, player.y, player.walkT, player.moving, player.facing, { body: '#8b2635', apron: '#f4e6c1', hat: 'chef' });
+  const rows = { south: 0, west: 1, east: 2, north: 3 };
+  const frame = player.moving ? Math.floor(player.walkT * 8) % 4 : 0;
+  const row = rows[player.direction] ?? 0;
+  ctx.fillStyle = 'rgba(24,20,12,.28)'; ctx.beginPath(); ctx.ellipse(player.x, player.y + 2, 18, 7, 0, 0, TAU); ctx.fill();
+  ctx.drawImage(art.player, frame * 96, row * 96, 96, 96,
+                Math.round(player.x - 48), Math.round(player.y - 88), 96, 96);
   if (player.carry > 0) {
-    for (let i = 0; i < player.carry; i++) drawPizzaIcon(player.x - 10 + i * 14, player.y - 26, 0.6);
+    for (let i = 0; i < player.carry; i++) drawPizzaIcon(player.x - 10 + i * 20, player.y - 79, 0.75);
   }
 }
 function drawHarvesterNPC() {
   if (!npcs.harvester) return;
   const n = npcs.harvester;
-  drawFigure(n.x, n.y, tSec * 8, n.moving, 1, { body: '#5a7a3a', apron: '#c9a05a', hat: 'straw' });
+  drawCastSprite('harvester', n.x, n.y, n.moving);
 }
 function drawBakerNPC() {
   if (!npcs.baker) return;
   const n = npcs.baker;
-  drawFigure(n.x, n.y, tSec * 8, n.moving, 1, { body: '#7a5a8a', apron: '#f4e6c1', hat: 'chef' });
-  if (n.carry > 0) drawPizzaIcon(n.x, n.y - 26, 0.6);
+  drawCastSprite('baker', n.x, n.y, n.moving);
+  if (n.carry > 0) drawPizzaIcon(n.x, n.y - 79, 0.72);
 }
 function drawCounterNPC() {
   if (!npcs.counter) return;
   const n = npcs.counter;
-  drawFigure(n.x, n.y, tSec * 6, false, -1, { body: '#3a6a8a', apron: '#5da24e', hat: 'band' });
+  drawCastSprite('counter', n.x, n.y, false);
+}
+function drawCastSprite(role, x, y, moving = true, frameOffset = 0) {
+  const rows = { harvester: 0, baker: 1, counter: 2, customer: 3 };
+  const frame = moving ? (Math.floor(tSec * 7 + frameOffset) % 4) : 0;
+  ctx.fillStyle = 'rgba(24,20,12,.24)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 17, 6, 0, 0, TAU); ctx.fill();
+  ctx.drawImage(art.cast, frame * 96, rows[role] * 96, 96, 96,
+                Math.round(x - 48), Math.round(y - 88), 96, 96);
 }
 function drawQueue() { for (const c of queue) drawCustomer(c); }
 function drawLeavers() { for (const c of leavers) drawCustomer(c); }
 function drawCustomer(c) {
-  const hues = ['#d8342c', '#3fae6a', '#4a7ec9', '#c98bf0', '#e0a83a', '#5da2a2'];
+  drawCastSprite('customer', c.x, c.y, c.state !== 'waiting', c.hue || 0);
   ctx.save(); ctx.translate(c.x, c.y);
-  ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(0, 12, 8, 3.5, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = hues[c.hue] || '#888';
-  ctx.beginPath(); ctx.ellipse(0, 0, 7, 9, 0, 0, TAU); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.2; ctx.stroke();
-  ctx.fillStyle = '#e8b98a'; ctx.beginPath(); ctx.arc(0, -10, 5.5, 0, TAU); ctx.fill();
   if (c.state === 'waiting') {
-    const w = 20, frac = clamp(c.patience / c.maxPatience, 0, 1);
-    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(-w / 2, -22, w, 4);
-    ctx.fillStyle = frac > 0.35 ? '#7de08a' : '#e0483b'; ctx.fillRect(-w / 2, -22, w * frac, 4);
+    const w = 36, frac = clamp(c.patience / c.maxPatience, 0, 1);
+    ctx.fillStyle = '#342418'; ctx.fillRect(-w / 2 - 2, -91, w + 4, 7);
+    ctx.fillStyle = frac > 0.35 ? '#8bd05a' : '#e55b3c'; ctx.fillRect(-w / 2, -89, w * frac, 3);
   } else if (c.state === 'leaving') {
-    ctx.font = 'bold 12px Georgia'; ctx.textAlign = 'center'; ctx.fillStyle = c.leaveHappy ? '#7de08a' : '#e0483b';
-    ctx.fillText(c.leaveHappy ? ':)' : ':(', 0, -20);
+    ctx.font = 'bold 15px "Courier New"'; ctx.textAlign = 'center'; ctx.fillStyle = c.leaveHappy ? '#b8e986' : '#ff7961';
+    ctx.fillText(c.leaveHappy ? '+♥' : '...!', 0, -91);
   }
   ctx.restore();
 }
@@ -890,7 +889,7 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 function drawFloaters() {
-  ctx.textAlign = 'center'; ctx.font = 'bold 15px Georgia';
+  ctx.textAlign = 'center'; ctx.font = 'bold 15px "Courier New"';
   for (const f of floaters) {
     ctx.globalAlpha = clamp(f.t, 0, 1);
     ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillText(f.text, f.x + 1, f.y + 1);
@@ -901,7 +900,7 @@ function drawFloaters() {
 function drawInteractPrompt() {
   const it = nearestInteract();
   if (!it) return;
-  ctx.textAlign = 'center'; ctx.font = 'bold 14px Georgia';
+  ctx.textAlign = 'center'; ctx.font = 'bold 14px "Courier New"';
   const txt = 'E: ' + it.text;
   ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(txt, player.x + 1, player.y - 34 + 1);
   ctx.fillStyle = '#ffd97a'; ctx.fillText(txt, player.x, player.y - 34);
@@ -911,20 +910,23 @@ function drawInteractPrompt() {
 function drawHUD() {
   buttons = [];
   ctx.textAlign = 'left';
-  ctx.fillStyle = 'rgba(0,0,0,0.45)'; roundRect(16, 16, 150, 30, 6); ctx.fill();
-  ctx.font = 'bold 19px Georgia'; ctx.fillStyle = '#ffd97a';
+  ctx.fillStyle = 'rgba(61,38,24,.9)'; roundRect(16, 16, 150, 30, 3); ctx.fill();
+  ctx.strokeStyle = '#d9a84c'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.font = 'bold 18px "Courier New"'; ctx.fillStyle = '#ffe29a';
   ctx.fillText('$ ' + money, 26, 38);
 
-  ctx.fillStyle = 'rgba(0,0,0,0.4)'; roundRect(16, 54, 210, 28, 6); ctx.fill();
-  ctx.font = 'bold 13px Georgia'; ctx.fillStyle = '#f4e6c1';
+  ctx.fillStyle = 'rgba(61,38,24,.88)'; roundRect(16, 54, 210, 28, 3); ctx.fill();
+  ctx.strokeStyle = '#9f7138'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.font = 'bold 12px "Courier New"'; ctx.fillStyle = '#fff0c2';
   ctx.fillText(`W:${stock.wheat} T:${stock.tomato} H:${stock.herb} C:${stock.cheese}`, 24, 73);
 
   drawHireMenu();
   drawDecorMenu();
 }
 function drawPanelHeader(px, py, panelW, panelH, title) {
-  ctx.fillStyle = 'rgba(0,0,0,0.5)'; roundRect(px, py, panelW, panelH, 8); ctx.fill();
-  ctx.font = 'bold 13px Georgia'; ctx.fillStyle = '#ffd97a'; ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(55,34,22,.92)'; roundRect(px, py, panelW, panelH, 4); ctx.fill();
+  ctx.strokeStyle = '#d9a84c'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.font = 'bold 13px "Courier New"'; ctx.fillStyle = '#ffe29a'; ctx.textAlign = 'left';
   ctx.fillText(title, px + 10, py + 20);
 }
 function drawHireMenu() {
@@ -956,9 +958,9 @@ function drawHireMenu() {
     }
     ctx.fillStyle = bg; roundRect(px + pad, by, bw, bh, 6); ctx.fill();
     ctx.strokeStyle = '#c8a24a'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#fff3d6'; ctx.font = 'bold 14px Georgia';
+    ctx.fillStyle = '#fff3d6'; ctx.font = 'bold 13px "Courier New"';
     ctx.fillText(title, px + pad + 10, by + 20);
-    ctx.font = 'italic 11px Georgia'; ctx.fillStyle = 'rgba(255,243,214,0.8)';
+    ctx.font = '11px "Courier New"'; ctx.fillStyle = 'rgba(255,243,214,0.8)';
     ctx.fillText(sub, px + pad + 10, by + 38);
     if (act) buttons.push({ x: px + pad, y: by, w: bw, h: bh, act });
     by += bh + pad;
@@ -975,9 +977,9 @@ function drawDecorMenu() {
     const bg = owned ? 'rgba(70,140,80,0.6)' : afford ? 'rgba(140,90,30,0.75)' : 'rgba(60,60,60,0.6)';
     ctx.fillStyle = bg; roundRect(px + pad, by, bw, bh, 6); ctx.fill();
     ctx.strokeStyle = '#c8a24a'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = '#fff3d6'; ctx.font = 'bold 14px Georgia';
+    ctx.fillStyle = '#fff3d6'; ctx.font = 'bold 13px "Courier New"';
     ctx.fillText(info.label + (owned ? ' — installed' : ' — $' + cost), px + pad + 10, by + 19);
-    ctx.font = 'italic 11px Georgia'; ctx.fillStyle = 'rgba(255,243,214,0.8)';
+    ctx.font = '11px "Courier New"'; ctx.fillStyle = 'rgba(255,243,214,0.8)';
     ctx.fillText(info.desc, px + pad + 10, by + 36);
     if (!owned) buttons.push({ x: px + pad, y: by, w: bw, h: bh, act: () => tryBuyDecor(key) });
     by += bh + pad;
@@ -994,7 +996,11 @@ function frame(now) {
 }
 
 // ============================== UI WIRING ==============================
-function begin() {
+async function begin() {
+  const button = document.getElementById('startBtn');
+  button.disabled = true; button.textContent = 'Opening...';
+  try { await artReady; }
+  catch (error) { button.textContent = 'Art failed to load'; console.error(error); return; }
   audio();
   resize();
   newGame();
@@ -1002,6 +1008,11 @@ function begin() {
   document.getElementById('startScreen').classList.add('hidden');
 }
 document.getElementById('startBtn').addEventListener('click', begin);
+artReady.then(() => {
+  const button = document.getElementById('startBtn');
+  button.disabled = false; button.textContent = 'Open Up Shop';
+  if (location.hash === '#play') begin();
+}).catch(error => console.error('Unable to load pixel-art atlases', error));
 resize();
 requestAnimationFrame(frame);
 </script>

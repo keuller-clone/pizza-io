@@ -1,0 +1,39 @@
+{
+  "environment": {
+    "columns": 6,
+    "rows": 6,
+    "cell": 128
+  },
+  "player": {
+    "columns": 4,
+    "rows": 4,
+    "cell": 96,
+    "anchor": {
+      "x": 48,
+      "y": 88
+    },
+    "directions": [
+      "south",
+      "west",
+      "east",
+      "north"
+    ],
+    "framesPerDirection": 4
+  },
+  "supportingCast": {
+    "columns": 4,
+    "rows": 4,
+    "cell": 96,
+    "anchor": {
+      "x": 48,
+      "y": 88
+    },
+    "roles": [
+      "harvester",
+      "baker",
+      "counter",
+      "customer"
+    ],
+    "framesPerRole": 4
+  }
+}
